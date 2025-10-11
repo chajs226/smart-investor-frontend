@@ -60,6 +60,8 @@ const convertMarkdownTableToHTML = (markdown: string): string => {
   return html;
 };
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+
 export default function Home() {
   const [formData, setFormData] = useState({
     stockCode: '',
@@ -114,7 +116,7 @@ export default function Home() {
       const query = formData.model ? `?model=${encodeURIComponent(formData.model)}` : '';
       // Next.js rewrites 프록시를 우회하고 직접 백엔드로 요청
       const response = await axios.post(
-        `http://localhost:8000/api/analysis/analyze${query}`,
+        `${API_BASE_URL}/api/analysis/analyze${query}`,
         {
           stock_code: formData.stockCode,
           stock_name: formData.stockName,
@@ -160,7 +162,7 @@ ${analysis.citations.map(citation => `- ${citation}`).join('\n')}
     try {
       const filename = `investment-report-${analysis.stock_name}-${new Date().toISOString().split('T')[0]}.md`;
       // Next.js rewrites 프록시를 우회하고 직접 백엔드로 요청
-      const res = await axios.post('http://localhost:8000/api/analysis/save_markdown', {
+      const res = await axios.post(`${API_BASE_URL}/api/analysis/save_markdown`, {
         content,
         filename
       });
