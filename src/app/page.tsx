@@ -214,8 +214,8 @@ ${analysis.citations.map(citation => `- ${citation}`).join('\n')}
                   onChange={handleSelectChange}
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <option value="국내">국내</option>
-                  <option value="해외">해외</option>
+                  <option value="한국">한국</option>
+                  <option value="미국">미국</option>
                 </select>
                 <p className="text-sm text-muted-foreground">
                   국내 선택 시 KOSPI/KOSDAQ 상장 기업을 우선으로 분석합니다.
