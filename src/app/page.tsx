@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { TrendingUp, Building2, Calendar, Settings, Play, Download } from 'lucide-react';
+import StockSearch from '@/components/StockSearch';
 
 interface AnalysisResponse {
   stock_code: string;
@@ -69,7 +70,7 @@ export default function Home() {
     comparePeriods: ['', ''],
     apiKey: '',
     model: 'sonar-deep-research', // 기본값, 사용자가 수정 가능
-    market: '국내'
+    market: '한국'
   });
   const [isLoading, setIsLoading] = useState(false);
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null);
@@ -141,49 +142,65 @@ export default function Home() {
     }
   };
 
-  const downloadMarkdown = async () => {
+  const downloadPDF = async () => {
     if (!analysis) return;
 
-    const content = `# ${analysis.stock_name} 투자 분석 보고서
-
-## 분석 정보
-- 종목코드: ${analysis.stock_code}
-- 비교기간: ${analysis.compare_periods.join(', ')}
-- 분석일시: ${new Date(analysis.created * 1000).toLocaleString()}
-
-## 분석 내용
-
-${analysis.analysis}
-
-## 참고 자료
-${analysis.citations.map(citation => `- ${citation}`).join('\n')}
-`;
+    setToast('PDF 생성 중...');
 
     try {
-      const filename = `investment-report-${analysis.stock_name}-${new Date().toISOString().split('T')[0]}.md`;
-      // Next.js rewrites 프록시를 우회하고 직접 백엔드로 요청
-      const res = await axios.post(`${API_BASE_URL}/api/analysis/save_markdown`, {
-        content,
-        filename
-      });
-      if (res.data?.saved) {
-        setToast('서버에 저장 완료: ' + (res.data?.path || 'outputs/' + filename));
-      } else if (res.data?.disabled) {
-        setToast('서버 저장 비활성화 상태입니다. 로컬 다운로드만 수행합니다.');
-      }
-    } catch (e) {
-      setToast('서버 저장 실패. 로컬 다운로드만 수행합니다.');
-    }
+      // jsPDF와 html2canvas를 동적으로 import (클라이언트 사이드에서만 실행)
+      const { default: jsPDF } = await import('jspdf');
+      const { default: html2canvas } = await import('html2canvas');
 
-    const blob = new Blob([content], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `investment-report-${analysis.stock_name}-${new Date().toISOString().split('T')[0]}.md`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+      // PDF 생성할 컨텐츠 요소 찾기
+      const reportElement = document.getElementById('analysis-report');
+      if (!reportElement) {
+        setToast('보고서를 찾을 수 없습니다.');
+        return;
+      }
+
+      // HTML을 Canvas로 변환
+      const canvas = await html2canvas(reportElement, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff'
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      const imgWidth = 210; // A4 width in mm
+      const pageHeight = 297; // A4 height in mm
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      let heightLeft = imgHeight;
+      let position = 0;
+
+      // 첫 페이지 추가
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+
+      // 필요한 경우 추가 페이지 생성
+      while (heightLeft > 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+
+      // PDF 다운로드
+      const filename = `investment-report-${analysis.stock_name}-${new Date().toISOString().split('T')[0]}.pdf`;
+      pdf.save(filename);
+
+      setToast('PDF 다운로드 완료!');
+    } catch (error) {
+      console.error('PDF 생성 오류:', error);
+      setToast('PDF 생성 중 오류가 발생했습니다.');
+    }
   };
 
   return (
@@ -223,11 +240,19 @@ ${analysis.citations.map(citation => `- ${citation}`).join('\n')}
               </div>
 
               {/* 종목 정보 섹션 */}
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Building2 className="h-4 w-4" />
-                  <Label>종목 정보</Label>
-                </div>
+              <div className="space-y-4">
+                <StockSearch
+                  market={formData.market}
+                  onSelect={(code, name) => {
+                    setFormData(prev => ({
+                      ...prev,
+                      stockCode: code,
+                      stockName: name
+                    }));
+                  }}
+                  selectedCode={formData.stockCode}
+                  selectedName={formData.stockName}
+                />
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="stockCode">종목코드</Label>
@@ -236,7 +261,7 @@ ${analysis.citations.map(citation => `- ${citation}`).join('\n')}
                       name="stockCode"
                       value={formData.stockCode}
                       onChange={handleInputChange}
-                      placeholder="005930"
+                      placeholder="검색에서 선택하거나 직접 입력"
                       required
                     />
                   </div>
@@ -247,7 +272,7 @@ ${analysis.citations.map(citation => `- ${citation}`).join('\n')}
                       name="stockName"
                       value={formData.stockName}
                       onChange={handleInputChange}
-                      placeholder="삼성전자"
+                      placeholder="검색에서 선택하거나 직접 입력"
                       required
                     />
                   </div>
@@ -263,23 +288,37 @@ ${analysis.citations.map(citation => `- ${citation}`).join('\n')}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="comparePeriod1">From: 분기</Label>
-                    <Input
+                    <select
                       id="comparePeriod1"
                       value={formData.comparePeriods[0]}
                       onChange={(e) => handlePeriodChange(0, e.target.value)}
-                      placeholder="2024.06"
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                       required
-                    />
+                    >
+                      <option value="">분기 선택</option>
+                      <option value="2024.06">2024.06</option>
+                      <option value="2024.09">2024.09</option>
+                      <option value="2024.12">2024.12</option>
+                      <option value="2025.03">2025.03</option>
+                      <option value="2025.06">2025.06</option>
+                    </select>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="comparePeriod2">To: 분기</Label>
-                    <Input
+                    <select
                       id="comparePeriod2"
                       value={formData.comparePeriods[1]}
                       onChange={(e) => handlePeriodChange(1, e.target.value)}
-                      placeholder="2025.06"
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                       required
-                    />
+                    >
+                      <option value="">분기 선택</option>
+                      <option value="2024.06">2024.06</option>
+                      <option value="2024.09">2024.09</option>
+                      <option value="2024.12">2024.12</option>
+                      <option value="2025.03">2025.03</option>
+                      <option value="2025.06">2025.06</option>
+                    </select>
                   </div>
                 </div>
               </div>
@@ -354,13 +393,13 @@ ${analysis.citations.map(citation => `- ${citation}`).join('\n')}
                 <CardTitle className="text-2xl font-bold">
                   {analysis.stock_name} 투자 분석 보고서
                 </CardTitle>
-                <Button onClick={downloadMarkdown} className="bg-green-600 hover:bg-green-700">
+                <Button onClick={downloadPDF} className="bg-green-600 hover:bg-green-700">
                   <Download className="mr-2 h-4 w-4" />
-                  마크다운 다운로드
+                  PDF 다운로드
                 </Button>
               </div>
             </CardHeader>
-            <CardContent className="space-y-8">
+            <CardContent className="space-y-8" id="analysis-report">
               {/* 재무 데이터 표 섹션 */}
               {analysis.financial_table && (
                 <section className="mb-8">
