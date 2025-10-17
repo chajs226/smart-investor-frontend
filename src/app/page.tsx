@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { useReactToPrint } from 'react-to-print';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -76,6 +77,7 @@ export default function Home() {
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const printRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!toast) return;
@@ -142,65 +144,21 @@ export default function Home() {
     }
   };
 
-  const downloadPDF = async () => {
+  // react-to-print를 사용한 PDF 생성 (브라우저 네이티브 인쇄 기능 사용)
+  const handlePrint = useReactToPrint({
+    contentRef: printRef,
+    documentTitle: `investment-report-${analysis?.stock_name || 'report'}-${new Date().toISOString().split('T')[0]}`,
+    onBeforePrint: async () => {
+      setToast('PDF 생성 준비 중...');
+    },
+    onAfterPrint: async () => {
+      setToast('PDF 생성 완료! (인쇄 대화상자에서 "PDF로 저장" 선택)');
+    },
+  });
+
+  const downloadPDF = () => {
     if (!analysis) return;
-
-    setToast('PDF 생성 중...');
-
-    try {
-      // jsPDF와 html2canvas를 동적으로 import (클라이언트 사이드에서만 실행)
-      const { default: jsPDF } = await import('jspdf');
-      const { default: html2canvas } = await import('html2canvas');
-
-      // PDF 생성할 컨텐츠 요소 찾기
-      const reportElement = document.getElementById('analysis-report');
-      if (!reportElement) {
-        setToast('보고서를 찾을 수 없습니다.');
-        return;
-      }
-
-      // HTML을 Canvas로 변환
-      const canvas = await html2canvas(reportElement, {
-        scale: 2,
-        useCORS: true,
-        logging: false,
-        backgroundColor: '#ffffff'
-      });
-
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4'
-      });
-
-      const imgWidth = 210; // A4 width in mm
-      const pageHeight = 297; // A4 height in mm
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      let heightLeft = imgHeight;
-      let position = 0;
-
-      // 첫 페이지 추가
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-      heightLeft -= pageHeight;
-
-      // 필요한 경우 추가 페이지 생성
-      while (heightLeft > 0) {
-        position = heightLeft - imgHeight;
-        pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-        heightLeft -= pageHeight;
-      }
-
-      // PDF 다운로드
-      const filename = `investment-report-${analysis.stock_name}-${new Date().toISOString().split('T')[0]}.pdf`;
-      pdf.save(filename);
-
-      setToast('PDF 다운로드 완료!');
-    } catch (error) {
-      console.error('PDF 생성 오류:', error);
-      setToast('PDF 생성 중 오류가 발생했습니다.');
-    }
+    handlePrint();
   };
 
   return (
@@ -399,7 +357,7 @@ export default function Home() {
                 </Button>
               </div>
             </CardHeader>
-            <CardContent className="space-y-8" id="analysis-report">
+            <CardContent className="space-y-8" id="analysis-report" ref={printRef}>
               {/* 재무 데이터 표 섹션 */}
               {analysis.financial_table && (
                 <section className="mb-8">
