@@ -1,14 +1,16 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { useReactToPrint } from 'react-to-print';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { TrendingUp, Building2, Calendar, Settings, Play, Download } from 'lucide-react';
+import StockSearch from '@/components/StockSearch';
 
 interface AnalysisResponse {
   stock_code: string;
@@ -69,12 +71,13 @@ export default function Home() {
     comparePeriods: ['', ''],
     apiKey: '',
     model: 'sonar-deep-research', // 기본값, 사용자가 수정 가능
-    market: '국내'
+    market: '한국'
   });
   const [isLoading, setIsLoading] = useState(false);
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const printRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!toast) return;
@@ -141,49 +144,21 @@ export default function Home() {
     }
   };
 
-  const downloadMarkdown = async () => {
+  // react-to-print를 사용한 PDF 생성 (브라우저 네이티브 인쇄 기능 사용)
+  const handlePrint = useReactToPrint({
+    contentRef: printRef,
+    documentTitle: `investment-report-${analysis?.stock_name || 'report'}-${new Date().toISOString().split('T')[0]}`,
+    onBeforePrint: async () => {
+      setToast('PDF 생성 준비 중...');
+    },
+    onAfterPrint: async () => {
+      setToast('PDF 생성 완료! (인쇄 대화상자에서 "PDF로 저장" 선택)');
+    },
+  });
+
+  const downloadPDF = () => {
     if (!analysis) return;
-
-    const content = `# ${analysis.stock_name} 투자 분석 보고서
-
-## 분석 정보
-- 종목코드: ${analysis.stock_code}
-- 비교기간: ${analysis.compare_periods.join(', ')}
-- 분석일시: ${new Date(analysis.created * 1000).toLocaleString()}
-
-## 분석 내용
-
-${analysis.analysis}
-
-## 참고 자료
-${analysis.citations.map(citation => `- ${citation}`).join('\n')}
-`;
-
-    try {
-      const filename = `investment-report-${analysis.stock_name}-${new Date().toISOString().split('T')[0]}.md`;
-      // Next.js rewrites 프록시를 우회하고 직접 백엔드로 요청
-      const res = await axios.post(`${API_BASE_URL}/api/analysis/save_markdown`, {
-        content,
-        filename
-      });
-      if (res.data?.saved) {
-        setToast('서버에 저장 완료: ' + (res.data?.path || 'outputs/' + filename));
-      } else if (res.data?.disabled) {
-        setToast('서버 저장 비활성화 상태입니다. 로컬 다운로드만 수행합니다.');
-      }
-    } catch (e) {
-      setToast('서버 저장 실패. 로컬 다운로드만 수행합니다.');
-    }
-
-    const blob = new Blob([content], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `investment-report-${analysis.stock_name}-${new Date().toISOString().split('T')[0]}.md`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    handlePrint();
   };
 
   return (
@@ -223,11 +198,19 @@ ${analysis.citations.map(citation => `- ${citation}`).join('\n')}
               </div>
 
               {/* 종목 정보 섹션 */}
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Building2 className="h-4 w-4" />
-                  <Label>종목 정보</Label>
-                </div>
+              <div className="space-y-4">
+                <StockSearch
+                  market={formData.market}
+                  onSelect={(code, name) => {
+                    setFormData(prev => ({
+                      ...prev,
+                      stockCode: code,
+                      stockName: name
+                    }));
+                  }}
+                  selectedCode={formData.stockCode}
+                  selectedName={formData.stockName}
+                />
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="stockCode">종목코드</Label>
@@ -236,7 +219,7 @@ ${analysis.citations.map(citation => `- ${citation}`).join('\n')}
                       name="stockCode"
                       value={formData.stockCode}
                       onChange={handleInputChange}
-                      placeholder="005930"
+                      placeholder="검색에서 선택하거나 직접 입력"
                       required
                     />
                   </div>
@@ -247,7 +230,7 @@ ${analysis.citations.map(citation => `- ${citation}`).join('\n')}
                       name="stockName"
                       value={formData.stockName}
                       onChange={handleInputChange}
-                      placeholder="삼성전자"
+                      placeholder="검색에서 선택하거나 직접 입력"
                       required
                     />
                   </div>
@@ -263,23 +246,37 @@ ${analysis.citations.map(citation => `- ${citation}`).join('\n')}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="comparePeriod1">From: 분기</Label>
-                    <Input
+                    <select
                       id="comparePeriod1"
                       value={formData.comparePeriods[0]}
                       onChange={(e) => handlePeriodChange(0, e.target.value)}
-                      placeholder="2024.06"
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                       required
-                    />
+                    >
+                      <option value="">분기 선택</option>
+                      <option value="2024.06">2024.06</option>
+                      <option value="2024.09">2024.09</option>
+                      <option value="2024.12">2024.12</option>
+                      <option value="2025.03">2025.03</option>
+                      <option value="2025.06">2025.06</option>
+                    </select>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="comparePeriod2">To: 분기</Label>
-                    <Input
+                    <select
                       id="comparePeriod2"
                       value={formData.comparePeriods[1]}
                       onChange={(e) => handlePeriodChange(1, e.target.value)}
-                      placeholder="2025.06"
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                       required
-                    />
+                    >
+                      <option value="">분기 선택</option>
+                      <option value="2024.06">2024.06</option>
+                      <option value="2024.09">2024.09</option>
+                      <option value="2024.12">2024.12</option>
+                      <option value="2025.03">2025.03</option>
+                      <option value="2025.06">2025.06</option>
+                    </select>
                   </div>
                 </div>
               </div>
@@ -354,15 +351,18 @@ ${analysis.citations.map(citation => `- ${citation}`).join('\n')}
                 <CardTitle className="text-2xl font-bold">
                   {analysis.stock_name} 투자 분석 보고서
                 </CardTitle>
-                <Button onClick={downloadMarkdown} className="bg-green-600 hover:bg-green-700">
+                <Button onClick={downloadPDF} className="bg-green-600 hover:bg-green-700">
                   <Download className="mr-2 h-4 w-4" />
-                  마크다운 다운로드
+                  PDF 다운로드
                 </Button>
               </div>
             </CardHeader>
-            <CardContent className="space-y-8">
+            <CardContent className="space-y-8" id="analysis-report" ref={printRef}>
               {/* 재무 데이터 표 섹션 */}
-              {analysis.financial_table && (
+              {analysis.financial_table && 
+               analysis.financial_table.trim() !== '' && 
+               !analysis.financial_table.includes('재무 표 생성 실패') &&
+               !analysis.financial_table.includes('실패') && (
                 <section className="mb-8">
                   <h3 className="text-xl font-semibold mb-4 pb-2 border-b-2 border-blue-500">📊 핵심 재무 지표</h3>
                   <div className="overflow-x-auto">
