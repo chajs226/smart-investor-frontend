@@ -359,7 +359,10 @@ export default function Home() {
             </CardHeader>
             <CardContent className="space-y-8" id="analysis-report" ref={printRef}>
               {/* 재무 데이터 표 섹션 */}
-              {analysis.financial_table && (
+              {analysis.financial_table && 
+               analysis.financial_table.trim() !== '' && 
+               !analysis.financial_table.includes('재무 표 생성 실패') &&
+               !analysis.financial_table.includes('실패') && (
                 <section className="mb-8">
                   <h3 className="text-xl font-semibold mb-4 pb-2 border-b-2 border-blue-500">📊 핵심 재무 지표</h3>
                   <div className="overflow-x-auto">
