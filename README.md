@@ -2,23 +2,25 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
-First, run the development server:
-
+1) Install dependencies
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2) Create `.env.local` from example
+```bash
+cp doc/env-frontend.example.md .env.local
+# 파일을 열어 NEXTAUTH_URL/SECRET, Kakao/Naver OAuth, Supabase URL/키를 채워넣습니다
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+3) Run the development server
+```bash
+npm run dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Open [http://localhost:3000](http://localhost:3000) with your browser.
+
+Auth: Kakao/Naver 로그인 버튼은 상단에 노출됩니다. 로그인 후 `/reports`에서 저장된 리포트를 조회할 수 있습니다.
 
 ## Learn More
 
