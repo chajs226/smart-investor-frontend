@@ -1,4 +1,4 @@
-import NextAuth from "next-auth";
+import { NextAuthOptions } from "next-auth";
 import KakaoProvider from "next-auth/providers/kakao";
 import NaverProvider from "next-auth/providers/naver";
 
@@ -23,8 +23,8 @@ if (process.env.NAVER_CLIENT_ID && process.env.NAVER_CLIENT_SECRET) {
   );
 }
 
-// NextAuth 설정
-export const { handlers, auth, signIn, signOut } = NextAuth({
+// NextAuth 설정 (v4)
+export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
   session: { strategy: "jwt" },
   providers,
@@ -48,9 +48,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return session;
     },
   },
-});
-
-// 라우트 핸들러 export
-export { handlers as GET, handlers as POST };
+};
 
 
