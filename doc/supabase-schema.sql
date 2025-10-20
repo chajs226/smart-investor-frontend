@@ -33,10 +33,9 @@ COMMENT ON COLUMN users.last_login_at IS '마지막 로그인 일시';
 
 -- ============================================
 
--- 2. Stock Analyses 테이블: 주식 분석 결과
+-- 2. Stock Analyses 테이블: 주식 분석 결과 (user_id 제거 버전)
 CREATE TABLE IF NOT EXISTS stock_analyses (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
     market VARCHAR(20) NOT NULL, -- 'KOSPI', 'KOSDAQ', 'NASDAQ'
     symbol VARCHAR(20) NOT NULL, -- 주식 티커/코드
     name VARCHAR(100) NOT NULL, -- 기업명
@@ -51,16 +50,14 @@ CREATE TABLE IF NOT EXISTS stock_analyses (
 );
 
 -- Stock Analyses 테이블 인덱스
-CREATE INDEX IF NOT EXISTS idx_stock_analyses_user_id ON stock_analyses(user_id);
 CREATE INDEX IF NOT EXISTS idx_stock_analyses_symbol ON stock_analyses(symbol);
 CREATE INDEX IF NOT EXISTS idx_stock_analyses_market ON stock_analyses(market);
 CREATE INDEX IF NOT EXISTS idx_stock_analyses_created_at ON stock_analyses(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_stock_analyses_user_symbol ON stock_analyses(user_id, symbol);
+CREATE INDEX IF NOT EXISTS idx_stock_analyses_symbol_created ON stock_analyses(symbol, created_at DESC);
 
 -- Stock Analyses 테이블 코멘트
-COMMENT ON TABLE stock_analyses IS '주식 분석 결과 저장';
+COMMENT ON TABLE stock_analyses IS '주식 분석 결과 저장 (로그인 불필요)';
 COMMENT ON COLUMN stock_analyses.id IS '분석 결과 고유 ID';
-COMMENT ON COLUMN stock_analyses.user_id IS '분석을 요청한 사용자 ID';
 COMMENT ON COLUMN stock_analyses.market IS '시장 구분 (KOSPI, KOSDAQ, NASDAQ 등)';
 COMMENT ON COLUMN stock_analyses.symbol IS '주식 심볼/티커 (예: 005930, AAPL)';
 COMMENT ON COLUMN stock_analyses.name IS '기업명';
@@ -88,20 +85,20 @@ CREATE POLICY "Users can view own data"
 -- Stock Analyses 테이블 RLS 활성화
 ALTER TABLE stock_analyses ENABLE ROW LEVEL SECURITY;
 
--- Stock Analyses: 모든 사용자가 자신의 분석 결과 조회 가능
-CREATE POLICY "Users can view own analyses"
+-- Stock Analyses: 모든 사용자가 분석 결과 조회 가능
+CREATE POLICY "Anyone can view analyses"
     ON stock_analyses FOR SELECT
-    USING (true); -- 인증은 애플리케이션 레벨에서 처리
+    USING (true);
 
 -- Stock Analyses: 모든 사용자가 분석 결과 삽입 가능
-CREATE POLICY "Users can insert own analyses"
+CREATE POLICY "Anyone can insert analyses"
     ON stock_analyses FOR INSERT
-    WITH CHECK (true); -- 인증은 애플리케이션 레벨에서 처리
+    WITH CHECK (true);
 
--- Stock Analyses: 사용자는 자신의 분석 결과만 삭제 가능
-CREATE POLICY "Users can delete own analyses"
+-- Stock Analyses: 모든 사용자가 분석 결과 삭제 가능
+CREATE POLICY "Anyone can delete analyses"
     ON stock_analyses FOR DELETE
-    USING (true); -- 인증은 애플리케이션 레벨에서 처리
+    USING (true);
 
 -- ============================================
 
@@ -137,15 +134,13 @@ CREATE TRIGGER update_stock_analyses_updated_at
 -- 사용자 목록 조회
 -- SELECT * FROM users ORDER BY created_at DESC LIMIT 10;
 
--- 특정 사용자의 분석 이력 조회
--- SELECT * FROM stock_analyses WHERE user_id = 'USER_UUID' ORDER BY created_at DESC;
+-- 모든 분석 결과 조회
+-- SELECT * FROM stock_analyses ORDER BY created_at DESC LIMIT 20;
+
+-- 특정 종목의 분석 이력 조회
+-- SELECT * FROM stock_analyses WHERE symbol = '005930' ORDER BY created_at DESC;
 
 -- 시장별 분석 건수 조회
 -- SELECT market, COUNT(*) as count FROM stock_analyses GROUP BY market;
-
--- 최근 분석 결과 조회 (모든 사용자)
--- SELECT sa.*, u.email FROM stock_analyses sa
--- JOIN users u ON sa.user_id = u.id
--- ORDER BY sa.created_at DESC LIMIT 20;
 
 -- ============================================

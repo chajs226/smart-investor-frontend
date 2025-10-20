@@ -2,7 +2,6 @@ import { getServerSupabase } from '../supabaseServer';
 
 export interface StockAnalysis {
   id?: string;
-  user_id?: string;
   market: 'KOSPI' | 'KOSDAQ' | 'NASDAQ' | string;
   symbol: string;
   name: string;
@@ -17,7 +16,7 @@ export interface StockAnalysis {
 }
 
 /**
- * 분석 결과 저장
+ * 분석 결과 저장 (로그인 불필요)
  */
 export async function saveAnalysis(analysisData: StockAnalysis) {
   try {
@@ -26,7 +25,6 @@ export async function saveAnalysis(analysisData: StockAnalysis) {
     const { data, error } = await supabase
       .from('stock_analyses')
       .insert({
-        user_id: analysisData.user_id,
         market: analysisData.market,
         symbol: analysisData.symbol,
         name: analysisData.name,
@@ -56,10 +54,9 @@ export async function saveAnalysis(analysisData: StockAnalysis) {
 }
 
 /**
- * 사용자별 분석 결과 조회
+ * 모든 분석 결과 조회 (페이징)
  */
-export async function getAnalysesByUserId(
-  userId: string,
+export async function getAllAnalyses(
   limit: number = 50,
   offset: number = 0
 ) {
@@ -69,7 +66,6 @@ export async function getAnalysesByUserId(
     const { data, error } = await supabase
       .from('stock_analyses')
       .select('*')
-      .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -79,7 +75,7 @@ export async function getAnalysesByUserId(
 
     return data;
   } catch (error) {
-    console.error('Failed to get analyses by user:', error);
+    console.error('Failed to get all analyses:', error);
     throw error;
   }
 }
@@ -88,7 +84,6 @@ export async function getAnalysesByUserId(
  * 종목별 최신 분석 조회
  */
 export async function getLatestAnalysisBySymbol(
-  userId: string,
   symbol: string
 ) {
   try {
@@ -97,7 +92,6 @@ export async function getLatestAnalysisBySymbol(
     const { data, error } = await supabase
       .from('stock_analyses')
       .select('*')
-      .eq('user_id', userId)
       .eq('symbol', symbol)
       .order('created_at', { ascending: false })
       .limit(1)
@@ -120,15 +114,14 @@ export async function getLatestAnalysisBySymbol(
 /**
  * 분석 결과 삭제
  */
-export async function deleteAnalysis(analysisId: string, userId: string) {
+export async function deleteAnalysis(analysisId: string) {
   try {
     const supabase = getServerSupabase();
     
     const { error } = await supabase
       .from('stock_analyses')
       .delete()
-      .eq('id', analysisId)
-      .eq('user_id', userId); // 본인 것만 삭제 가능
+      .eq('id', analysisId);
 
     if (error) {
       throw error;
@@ -145,7 +138,6 @@ export async function deleteAnalysis(analysisId: string, userId: string) {
  * 시장별 분석 결과 조회
  */
 export async function getAnalysesByMarket(
-  userId: string,
   market: string,
   limit: number = 20
 ) {
@@ -155,7 +147,6 @@ export async function getAnalysesByMarket(
     const { data, error } = await supabase
       .from('stock_analyses')
       .select('*')
-      .eq('user_id', userId)
       .eq('market', market)
       .order('created_at', { ascending: false })
       .limit(limit);

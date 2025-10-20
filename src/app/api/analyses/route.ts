@@ -1,41 +1,19 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/auth';
-import { getAnalysesByUserId, saveAnalysis } from '@/lib/supabase/analyses';
-import { getUserByEmail } from '@/lib/supabase/users';
+import { getAllAnalyses, saveAnalysis } from '@/lib/supabase/analyses';
 
 /**
  * GET /api/analyses
- * 로그인한 사용자의 분석 이력 조회
+ * 모든 분석 이력 조회 (로그인 불필요)
  */
 export async function GET(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    
-    if (!session?.user?.email) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    // Supabase에서 사용자 정보 조회
-    const user = await getUserByEmail(session.user.email);
-    
-    if (!user) {
-      return NextResponse.json(
-        { error: 'User not found in database' },
-        { status: 404 }
-      );
-    }
-
     // 쿼리 파라미터에서 limit, offset 추출
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get('limit') || '50');
     const offset = parseInt(searchParams.get('offset') || '0');
 
     // 분석 이력 조회
-    const analyses = await getAnalysesByUserId(user.id!, limit, offset);
+    const analyses = await getAllAnalyses(limit, offset);
 
     return NextResponse.json({
       success: true,
@@ -53,29 +31,10 @@ export async function GET(request: Request) {
 
 /**
  * POST /api/analyses
- * 새로운 분석 결과 저장
+ * 새로운 분석 결과 저장 (로그인 불필요)
  */
 export async function POST(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    
-    if (!session?.user?.email) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    // Supabase에서 사용자 정보 조회
-    const user = await getUserByEmail(session.user.email);
-    
-    if (!user) {
-      return NextResponse.json(
-        { error: 'User not found in database' },
-        { status: 404 }
-      );
-    }
-
     const body = await request.json();
 
     // 필수 필드 검증
@@ -88,7 +47,6 @@ export async function POST(request: Request) {
 
     // 분석 결과 저장
     const savedAnalysis = await saveAnalysis({
-      user_id: user.id,
       market: body.market,
       symbol: body.symbol,
       name: body.name,

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
+import { useSession } from 'next-auth/react';
 import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -65,6 +66,7 @@ const convertMarkdownTableToHTML = (markdown: string): string => {
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
 
 export default function AnalyzePage() {
+  const { data: session, status } = useSession();
   const [formData, setFormData] = useState({
     stockCode: '',
     stockName: '',
@@ -74,6 +76,7 @@ export default function AnalyzePage() {
     market: '한국'
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -107,6 +110,53 @@ export default function AnalyzePage() {
     }));
   };
 
+  // Supabase에 분석 결과 저장 (로그인 불필요)
+  const saveAnalysisToDatabase = async (analysisData: AnalysisResponse) => {
+    setIsSaving(true);
+    try {
+      // 시장 타입 결정 (한국 -> KOSPI/KOSDAQ, 미국 -> NASDAQ)
+      let marketType = 'KOSPI'; // 기본값
+      if (formData.market === '미국') {
+        marketType = 'NASDAQ';
+      } else if (formData.stockCode.length === 6) {
+        // 한국 주식 코드는 6자리
+        marketType = 'KOSPI'; // 실제로는 거래소 정보가 필요하지만 기본값으로 설정
+      }
+
+      const response = await fetch('/api/analyses', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          market: marketType,
+          symbol: analysisData.stock_code,
+          name: analysisData.stock_name,
+          sector: null, // 섹터 정보가 없으면 null
+          report: analysisData.analysis,
+          financial_table: analysisData.financial_table,
+          compare_periods: analysisData.compare_periods,
+          model: analysisData.model,
+          citations: analysisData.citations,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to save analysis');
+      }
+
+      const result = await response.json();
+      console.log('Analysis saved successfully:', result);
+      setToast('✅ 분석 결과가 저장되었습니다!');
+    } catch (error: any) {
+      console.error('Failed to save analysis to database:', error);
+      setToast('⚠️ 분석 결과 저장 실패 (분석은 완료됨)');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -129,7 +179,13 @@ export default function AnalyzePage() {
         },
         { signal: controller.signal }
       );
-      setAnalysis(response.data);
+      
+      const analysisData = response.data;
+      setAnalysis(analysisData);
+      
+      // 분석 완료 후 자동으로 Supabase에 저장
+      await saveAnalysisToDatabase(analysisData);
+      
     } catch (err: any) {
       if (axios.isCancel(err)) {
         setError('요청이 시간 초과되었습니다. (300초/5분) 모델/기간을 조정하거나 다시 시도하세요.');

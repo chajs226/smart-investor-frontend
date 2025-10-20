@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useSession } from 'next-auth/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 
@@ -16,7 +15,6 @@ interface ReportItem {
 }
 
 export default function ReportsPage() {
-  const { status } = useSession();
   const [items, setItems] = useState<ReportItem[]>([]);
   const [q, setQ] = useState('');
   const [market, setMarket] = useState('');
@@ -42,14 +40,9 @@ export default function ReportsPage() {
   };
 
   useEffect(() => {
-    if (status === 'authenticated') {
-      fetchReports();
-    }
+    fetchReports();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status]);
-
-  if (status === 'loading') return <div className="p-6">세션 확인 중...</div>;
-  if (status !== 'authenticated') return <div className="p-6">로그인 후 리포트를 볼 수 있습니다.</div>;
+  }, []);
 
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-4">
