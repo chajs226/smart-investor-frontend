@@ -1,6 +1,7 @@
 import { NextAuthOptions } from "next-auth";
 import KakaoProvider from "next-auth/providers/kakao";
 import NaverProvider from "next-auth/providers/naver";
+import { upsertUser } from "./lib/supabase/users";
 
 // OAuth 프로바이더를 조건부로 추가 (환경변수가 설정된 경우만)
 const providers = [];
@@ -34,7 +35,7 @@ export const authOptions: NextAuthOptions = {
   },
   debug: process.env.NODE_ENV === "development", // 개발 환경에서 디버그 모드 활성화
   callbacks: {
-    async jwt({ token, account, profile }: any) {
+    async jwt({ token, account, profile, user }: any) {
       if (account) {
         token.provider = account.provider;
         token.providerAccountId = account.providerAccountId;
@@ -45,17 +46,69 @@ export const authOptions: NextAuthOptions = {
           token.profileId = anyProfile["id"] as string;
         }
       }
+      // user 객체에서 이메일 추출
+      if (user?.email) {
+        token.email = user.email;
+      }
       return token;
     },
     async session({ session, token }: any) {
+      // 세션에 provider 정보 추가
       session.provider = token.provider;
       session.providerAccountId = token.providerAccountId;
+      
+      // 세션의 user에 이메일 추가 (Supabase 조회 시 사용)
+      if (session.user) {
+        session.user.email = token.email || session.user.email;
+        // provider와 providerAccountId를 조합하여 고유 식별자로 사용
+        session.user.providerId = `${token.provider}:${token.providerAccountId}`;
+      }
+      
       return session;
     },
     async signIn({ user, account, profile }: any) {
-      // 로그인 성공 여부 확인
-      console.log("Sign in attempt:", { user, account, profile });
-      return true;
+      try {
+        console.log("Sign in attempt:", { user, account, profile });
+        
+        // 이메일 추출 (네이버/카카오 프로필 구조 고려)
+        let email = user.email;
+        
+        // 네이버 프로필 구조
+        if (!email && profile?.response?.email) {
+          email = profile.response.email;
+        }
+        
+        // 카카오 프로필 구조
+        if (!email && profile?.kakao_account?.email) {
+          email = profile.kakao_account.email;
+        }
+        
+        if (email && account) {
+          console.log("Saving user to Supabase:", {
+            email,
+            provider: account.provider,
+            providerAccountId: account.providerAccountId,
+          });
+          
+          // Supabase에 사용자 정보 저장
+          await upsertUser({
+            email,
+            provider: account.provider,
+            provider_account_id: account.providerAccountId,
+            name: user.name || user.id,
+          });
+          
+          console.log("User saved to Supabase successfully");
+        } else {
+          console.warn("Email or account missing, skipping Supabase save");
+        }
+        
+        return true;
+      } catch (error) {
+        console.error("Failed to save user to Supabase:", error);
+        // 에러가 발생해도 로그인은 계속 진행 (Supabase 오류로 로그인 차단 방지)
+        return true;
+      }
     },
     async redirect({ url, baseUrl }: any) {
       // 리다이렉트 URL 로깅
