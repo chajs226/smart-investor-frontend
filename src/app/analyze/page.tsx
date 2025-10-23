@@ -166,6 +166,20 @@ export default function AnalyzePage() {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 300000); // 300초 타임아웃 (5분)
     try {
+      // 로그인한 사용자인 경우 분석 횟수 확인
+      if (status === 'authenticated' && session?.user?.email) {
+        const profileRes = await fetch('/api/user/profile');
+        if (profileRes.ok) {
+          const profileData = await profileRes.json();
+          if (profileData.user.analysis_count <= 0) {
+            setError('분석 가능 횟수를 모두 사용했습니다. 관리자에게 문의하세요.');
+            setIsLoading(false);
+            clearTimeout(timeoutId);
+            return;
+          }
+        }
+      }
+
       const query = formData.model ? `?model=${encodeURIComponent(formData.model)}` : '';
       // Next.js rewrites 프록시를 우회하고 직접 백엔드로 요청
       const response = await axios.post(
@@ -185,6 +199,24 @@ export default function AnalyzePage() {
       
       // 분석 완료 후 자동으로 Supabase에 저장
       await saveAnalysisToDatabase(analysisData);
+      
+      // 로그인한 사용자인 경우 분석 횟수 차감
+      if (status === 'authenticated' && session?.user?.email) {
+        try {
+          const decrementRes = await fetch('/api/user/decrement-analysis', {
+            method: 'POST',
+          });
+          
+          if (decrementRes.ok) {
+            const decrementData = await decrementRes.json();
+            console.log('Analysis count decremented:', decrementData);
+            setToast(`✅ 분석 완료! 남은 횟수: ${decrementData.analysis_count}회`);
+          }
+        } catch (decrementError) {
+          console.error('Failed to decrement analysis count:', decrementError);
+          // 횟수 차감 실패해도 분석 결과는 보여줌
+        }
+      }
       
     } catch (err: any) {
       if (axios.isCancel(err)) {
@@ -219,6 +251,18 @@ export default function AnalyzePage() {
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
+      {/* 로딩 오버레이 */}
+      {isLoading && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white p-8 rounded-lg shadow-xl text-center max-w-md">
+            <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mx-auto mb-4"></div>
+            <h3 className="text-xl font-semibold mb-2">분석 중입니다</h3>
+            <p className="text-gray-600">최대 3분 소요될 수 있습니다.</p>
+            <p className="text-sm text-gray-500 mt-2">잠시만 기다려주세요...</p>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-4xl mx-auto px-4">
         <Card className="w-full max-w-4xl mx-auto">
           <CardHeader>
