@@ -34,6 +34,19 @@ export const authOptions: NextAuthOptions = {
     error: "/", // 에러 발생 시 메인 페이지로 리다이렉트
   },
   debug: process.env.NODE_ENV === "development", // 개발 환경에서 디버그 모드 활성화
+  logger: {
+    error(code, metadata) {
+      console.error("NextAuth Error:", code, metadata);
+    },
+    warn(code) {
+      console.warn("NextAuth Warning:", code);
+    },
+    debug(code, metadata) {
+      if (process.env.NODE_ENV === "development") {
+        console.log("NextAuth Debug:", code, metadata);
+      }
+    }
+  },
   callbacks: {
     async jwt({ token, account, profile, user }: any) {
       if (account) {
