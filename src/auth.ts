@@ -1,6 +1,7 @@
 import { NextAuthOptions } from "next-auth";
 import KakaoProvider from "next-auth/providers/kakao";
 import NaverProvider from "next-auth/providers/naver";
+import CredentialsProvider from "next-auth/providers/credentials";
 import { upsertUser } from "./lib/supabase/users";
 
 // OAuth 프로바이더를 조건부로 추가 (환경변수가 설정된 경우만)
@@ -16,10 +17,28 @@ if (process.env.KAKAO_CLIENT_ID && process.env.KAKAO_CLIENT_SECRET) {
 }
 
 if (process.env.NAVER_CLIENT_ID && process.env.NAVER_CLIENT_SECRET) {
+  console.log('🔐 Naver OAuth Provider 활성화됨');
+  console.log('Client ID 길이:', process.env.NAVER_CLIENT_ID?.length);
+  console.log('Client Secret 길이:', process.env.NAVER_CLIENT_SECRET?.length);
+  
   providers.push(
     NaverProvider({
       clientId: process.env.NAVER_CLIENT_ID,
       clientSecret: process.env.NAVER_CLIENT_SECRET,
+    })
+  );
+}
+
+// 프로바이더가 없으면 더미 프로바이더 추가 (NextAuth 오류 방지)
+if (providers.length === 0) {
+  console.warn('⚠️ OAuth 프로바이더가 설정되지 않았습니다.');
+  providers.push(
+    CredentialsProvider({
+      name: 'Dummy',
+      credentials: {},
+      async authorize() {
+        return null;
+      },
     })
   );
 }

@@ -132,8 +132,53 @@ export default function AnalyzePage() {
         }
       }
 
+      // 시장 값을 DB 형식으로 변환
+      const marketValue = formData.market === '한국' ? 'KOSPI' : 'NASDAQ';
+      
+      // 1단계: 캐시 확인 (7일 이내 동일 조건 분석이 있는지)
+      const cacheCheckRes = await fetch('/api/analyses/check-cache', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          market: marketValue,
+          symbol: formData.stockCode,
+          name: formData.stockName,
+          compare_periods: formData.comparePeriods.filter(p => p.trim() !== ''),
+          model: formData.model,
+        }),
+      });
+
+      if (cacheCheckRes.ok) {
+        const cacheData = await cacheCheckRes.json();
+        
+        if (cacheData.cached && cacheData.data) {
+          // 캐시된 분석 결과 사용
+          console.log('✅ Using cached analysis');
+          const cachedAnalysis = cacheData.data;
+          
+          setAnalysis({
+            stock_code: cachedAnalysis.symbol,
+            stock_name: cachedAnalysis.name,
+            compare_periods: cachedAnalysis.compare_periods || [],
+            analysis: cachedAnalysis.report,
+            financial_table: cachedAnalysis.financial_table || '',
+            citations: cachedAnalysis.citations || [],
+            model: cachedAnalysis.model || formData.model,
+            usage: null,
+            created: 0,
+          });
+
+          setToast('✅ 기존 분석 결과를 불러왔습니다 (캐시)');
+          setIsLoading(false);
+          clearTimeout(timeoutId);
+          return;
+        }
+      }
+
+      // 2단계: 캐시에 없으면 백엔드 LLM 분석 요청
       const query = formData.model ? `?model=${encodeURIComponent(formData.model)}` : '';
-      // Next.js rewrites 프록시를 우회하고 직접 백엔드로 요청
       const response = await axios.post(
         `${API_BASE_URL}/api/analysis/analyze${query}`,
         {
@@ -148,10 +193,38 @@ export default function AnalyzePage() {
       
       const analysisData = response.data;
       setAnalysis(analysisData);
+
+      // 3단계: 프론트엔드 Supabase에 분석 결과 저장 및 이력 기록
+      try {
+        const saveRes = await fetch('/api/analyses', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            market: marketValue,
+            symbol: analysisData.stock_code,
+            name: analysisData.stock_name,
+            sector: null,
+            report: analysisData.analysis,
+            financial_table: analysisData.financial_table,
+            compare_periods: analysisData.compare_periods,
+            model: analysisData.model,
+            citations: analysisData.citations,
+          }),
+        });
+
+        if (saveRes.ok) {
+          const saveData = await saveRes.json();
+          console.log('✅ Analysis saved:', saveData.data?.id);
+          console.log('✅ From cache:', saveData.fromCache);
+        }
+      } catch (saveError) {
+        console.error('Failed to save analysis:', saveError);
+        // 저장 실패해도 분석 결과는 보여줌
+      }
       
-      // 백엔드에서 자동으로 Supabase에 저장됨 (중복 저장 방지)
-      
-      // 로그인한 사용자인 경우 분석 횟수 차감
+      // 4단계: 로그인한 사용자인 경우 분석 횟수 차감
       if (status === 'authenticated' && session?.user?.email) {
         try {
           const decrementRes = await fetch('/api/user/decrement-analysis', {
