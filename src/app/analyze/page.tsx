@@ -118,20 +118,6 @@ export default function AnalyzePage() {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 300000); // 300초 타임아웃 (5분)
     try {
-      // 로그인한 사용자인 경우 분석 횟수 확인
-      if (status === 'authenticated' && session?.user?.email) {
-        const profileRes = await fetch('/api/user/profile');
-        if (profileRes.ok) {
-          const profileData = await profileRes.json();
-          if (profileData.user.analysis_count <= 0) {
-            setError('분석 가능 횟수를 모두 사용했습니다. 관리자에게 문의하세요.');
-            setIsLoading(false);
-            clearTimeout(timeoutId);
-            return;
-          }
-        }
-      }
-
       // 시장 값을 DB 형식으로 변환
       const marketValue = formData.market === '한국' ? 'KOSPI' : 'NASDAQ';
       
@@ -170,7 +156,35 @@ export default function AnalyzePage() {
             created: 0,
           });
 
-          setToast('✅ 기존 분석 결과를 불러왔습니다 (캐시)');
+          // 캐시 히트 시에도 분석 횟수 차감
+          if (status === 'authenticated' && session?.user?.email) {
+            try {
+              const decrementRes = await fetch('/api/user/decrement-analysis', {
+                method: 'POST',
+              });
+              
+              if (decrementRes.ok) {
+                const decrementData = await decrementRes.json();
+                console.log('Analysis count decremented (cache hit):', decrementData);
+                setToast(`✅ 분석 완료! 남은 횟수: ${decrementData.analysis_count}회`);
+              } else {
+                const errorData = await decrementRes.json();
+                setError(errorData.error || '분석 횟수 차감에 실패했습니다.');
+                setAnalysis(null);
+                setIsLoading(false);
+                clearTimeout(timeoutId);
+                return;
+              }
+            } catch (decrementError) {
+              console.error('Failed to decrement analysis count:', decrementError);
+              setError('분석 횟수 차감에 실패했습니다.');
+              setAnalysis(null);
+              setIsLoading(false);
+              clearTimeout(timeoutId);
+              return;
+            }
+          }
+
           setIsLoading(false);
           clearTimeout(timeoutId);
           return;
