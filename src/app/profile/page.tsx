@@ -184,6 +184,16 @@ export default function ProfilePage() {
                 <p className="text-sm text-gray-600 mt-1">
                   남은 분석 가능 횟수입니다.
                 </p>
+                {userInfo?.analysis_count === 0 && (
+                  <Button
+                    onClick={() => router.push('/recharge')}
+                    className="mt-3 w-full bg-blue-600 hover:bg-blue-700"
+                    size="sm"
+                  >
+                    <CreditCard className="h-4 w-4 mr-2" />
+                    분석가능횟수 충전
+                  </Button>
+                )}
               </div>
             </div>
 
@@ -216,7 +226,7 @@ export default function ProfilePage() {
             {/* 안내 메시지 */}
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
               <p className="text-sm text-amber-800">
-                💡 분석 횟수가 부족하시면 관리자에게 문의하세요.
+                💡 분석 횟수가 부족하시면 충전 버튼을 눌러 횟수를 추가하세요.
               </p>
             </div>
           </CardContent>
