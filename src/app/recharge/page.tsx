@@ -51,7 +51,7 @@ export default function RechargePage() {
     const clientKey = process.env.NEXT_PUBLIC_TOSS_CLIENT_KEY;
     
     if (!clientKey) {
-      setError('토스 페이먼츠 클라이언트 키가 설정되지 않았습니다.');
+      setError('현재 베타 버전으로 충전 기능이 추가될 예정입니다.\n서비스를 더 이용하고 싶으시면 chajs226@gmail.com으로 문의해주세요.');
       return;
     }
 
@@ -164,7 +164,7 @@ export default function RechargePage() {
         {error && (
           <Card className="mb-6 border-red-200 bg-red-50">
             <CardContent className="pt-6">
-              <p className="text-red-800 text-center">{error}</p>
+              <p className="text-red-800 text-center whitespace-pre-line">{error}</p>
             </CardContent>
           </Card>
         )}

@@ -8,6 +8,10 @@ import { upsertUser } from "./lib/supabase/users";
 const providers = [];
 
 if (process.env.KAKAO_CLIENT_ID && process.env.KAKAO_CLIENT_SECRET) {
+  console.log('🔐 Kakao OAuth Provider 활성화됨');
+  console.log('Client ID 길이:', process.env.KAKAO_CLIENT_ID?.length);
+  console.log('Client Secret 길이:', process.env.KAKAO_CLIENT_SECRET?.length);
+  
   providers.push(
     KakaoProvider({
       clientId: process.env.KAKAO_CLIENT_ID,

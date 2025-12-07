@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { TrendingUp, Building2, Calendar, Settings, Play, Download } from 'lucide-react';
+import { TrendingUp, Building2, Calendar, Play, Download } from 'lucide-react';
 import StockSearch from '@/components/StockSearch';
 
 interface AnalysisResponse {
@@ -71,8 +71,6 @@ export default function AnalyzePage() {
     stockCode: '',
     stockName: '',
     comparePeriods: ['', ''],
-    apiKey: '',
-    model: 'sonar-deep-research', // 기본값, 사용자가 수정 가능
     market: '한국'
   });
   const [isLoading, setIsLoading] = useState(false);
@@ -132,7 +130,6 @@ export default function AnalyzePage() {
           symbol: formData.stockCode,
           name: formData.stockName,
           compare_periods: formData.comparePeriods.filter(p => p.trim() !== ''),
-          model: formData.model,
         }),
       });
 
@@ -151,7 +148,7 @@ export default function AnalyzePage() {
             analysis: cachedAnalysis.report,
             financial_table: cachedAnalysis.financial_table || '',
             citations: cachedAnalysis.citations || [],
-            model: cachedAnalysis.model || formData.model,
+            model: cachedAnalysis.model || '',
             usage: null,
             created: 0,
           });
@@ -192,15 +189,14 @@ export default function AnalyzePage() {
       }
 
       // 2단계: 캐시에 없으면 백엔드 LLM 분석 요청
-      const query = formData.model ? `?model=${encodeURIComponent(formData.model)}` : '';
+      // API 키와 모델은 서버 환경변수에서 관리됨
       const response = await axios.post(
-        `${API_BASE_URL}/api/analysis/analyze${query}`,
+        `${API_BASE_URL}/api/analysis/analyze`,
         {
           stock_code: formData.stockCode,
           stock_name: formData.stockName,
           compare_periods: formData.comparePeriods.filter(p => p.trim() !== ''),
           market: formData.market,
-          api_key: formData.apiKey
         },
         { signal: controller.signal }
       );
@@ -415,41 +411,6 @@ export default function AnalyzePage() {
                       <option value="2025.03">2025.03</option>
                       <option value="2025.06">2025.06</option>
                     </select>
-                  </div>
-                </div>
-              </div>
-
-              {/* API 설정 섹션 */}
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Settings className="h-4 w-4" />
-                  <Label>API 설정</Label>
-                </div>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="apiKey">Perplexity API 키</Label>
-                    <Input
-                      id="apiKey"
-                      name="apiKey"
-                      type="password"
-                      value={formData.apiKey}
-                      onChange={handleInputChange}
-                      placeholder="Perplexity API 키를 입력하세요"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="model">모델 (선택)</Label>
-                    <Input
-                      id="model"
-                      name="model"
-                      value={formData.model}
-                      onChange={handleInputChange}
-                      placeholder="예: llama-3.1-sonar-small-128k-online"
-                    />
-                    <p className="text-sm text-muted-foreground">
-                      빈칸이면 서버 기본 모델을 사용합니다.
-                    </p>
                   </div>
                 </div>
               </div>
