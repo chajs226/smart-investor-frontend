@@ -11,9 +11,8 @@ const nextConfig: NextConfig = {
       },
     ];
   },
-  eslint: {
-    ignoreDuringBuilds: true,  // ✅ 배포 중 ESLint 오류 무시
-  }
+  // Next.js 16부터 eslint 옵션은 next.config.ts에서 제거됨
+  // ESLint 설정은 .eslintrc.json 또는 eslint.config.mjs에서 관리
 };
 
 export default nextConfig;
