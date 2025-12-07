@@ -104,44 +104,68 @@ export const authOptions: NextAuthOptions = {
     },
     async signIn({ user, account, profile }: any) {
       try {
-        console.log("Sign in attempt:", { user, account, profile });
+        console.log("🔐 Sign in attempt:", { 
+          user, 
+          account, 
+          profile,
+          provider: account?.provider 
+        });
         
         // 이메일 추출 (네이버/카카오 프로필 구조 고려)
         let email = user.email;
+        let userName = user.name;
         
         // 네이버 프로필 구조
         if (!email && profile?.response?.email) {
           email = profile.response.email;
+          userName = userName || profile.response.name;
         }
         
-        // 카카오 프로필 구조
+        // 카카오 프로필 구조 (여러 패턴 지원)
         if (!email && profile?.kakao_account?.email) {
           email = profile.kakao_account.email;
         }
+        if (!userName && profile?.kakao_account?.profile?.nickname) {
+          userName = profile.kakao_account.profile.nickname;
+        }
+        if (!userName && profile?.properties?.nickname) {
+          userName = profile.properties.nickname;
+        }
+        
+        // 카카오에서 이메일을 받지 못한 경우: 카카오 ID를 이메일로 사용
+        if (!email && account?.provider === 'kakao' && profile?.id) {
+          email = `kakao_${profile.id}@kakao.user`;
+          console.log("⚠️ Kakao email not provided, using kakao ID as email:", email);
+          console.log("💡 Tip: 카카오 개발자 콘솔에서 이메일 동의 항목을 '필수'로 설정하세요.");
+        }
+        
+        console.log("📧 Extracted user info:", { email, userName, provider: account?.provider });
         
         if (email && account) {
-          console.log("Saving user to Supabase:", {
+          console.log("💾 Saving user to Supabase:", {
             email,
             provider: account.provider,
             providerAccountId: account.providerAccountId,
+            name: userName,
           });
           
           // Supabase에 사용자 정보 저장
-          await upsertUser({
+          const savedUser = await upsertUser({
             email,
             provider: account.provider,
             provider_account_id: account.providerAccountId,
-            name: user.name || user.id,
+            name: userName || email.split('@')[0], // 이름이 없으면 이메일 앞부분 사용
           });
           
-          console.log("User saved to Supabase successfully");
+          console.log("✅ User saved to Supabase successfully:", savedUser);
         } else {
-          console.warn("Email or account missing, skipping Supabase save");
+          console.warn("⚠️ Email or account missing:", { email, account });
+          console.warn("Full profile:", JSON.stringify(profile, null, 2));
         }
         
         return true;
       } catch (error) {
-        console.error("Failed to save user to Supabase:", error);
+        console.error("❌ Failed to save user to Supabase:", error);
         // 에러가 발생해도 로그인은 계속 진행 (Supabase 오류로 로그인 차단 방지)
         return true;
       }

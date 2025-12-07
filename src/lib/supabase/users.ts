@@ -3,8 +3,6 @@ import { getServerSupabase } from '../supabaseServer';
 export interface User {
   id?: string;
   email: string;
-  provider: string;
-  provider_account_id: string;
   name?: string;
   analysis_count?: number; // 남은 분석 가능 횟수
   plan?: 'free' | 'paid';  // 사용자 플랜
@@ -13,51 +11,122 @@ export interface User {
   last_login_at?: string;
 }
 
+export interface UserProvider {
+  id?: string;
+  user_id: string;
+  provider: string;
+  provider_account_id: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 /**
- * 사용자 정보 생성 또는 업데이트
+ * 사용자 정보 생성 또는 업데이트 (여러 OAuth provider 지원)
  */
-export async function upsertUser(userData: Omit<User, 'id' | 'created_at' | 'updated_at' | 'analysis_count' | 'plan'>) {
+export async function upsertUser(userData: {
+  email: string;
+  provider: string;
+  provider_account_id: string;
+  name?: string;
+}) {
   try {
     const supabase = getServerSupabase();
     
-    // 먼저 기존 사용자 확인
-    const { data: existingUser } = await supabase
-      .from('users')
-      .select('*')
+    // 1. provider와 provider_account_id로 기존 연동 확인
+    const { data: existingProvider } = await supabase
+      .from('user_providers')
+      .select('user_id, users(*)')
       .eq('provider', userData.provider)
       .eq('provider_account_id', userData.provider_account_id)
       .single();
-    
-    const { data, error } = await supabase
-      .from('users')
-      .upsert(
-        {
-          email: userData.email,
+
+    let userId: string;
+    let isNewUser = false;
+
+    if (existingProvider) {
+      // 기존 provider 연동이 있으면 해당 사용자 사용
+      userId = existingProvider.user_id;
+      console.log('Existing provider found, user_id:', userId);
+    } else {
+      // 2. 이메일로 기존 사용자 확인
+      const { data: existingUserByEmail } = await supabase
+        .from('users')
+        .select('*')
+        .eq('email', userData.email)
+        .single();
+
+      if (existingUserByEmail) {
+        // 같은 이메일의 사용자가 있으면 해당 사용자에 새 provider 연동
+        userId = existingUserByEmail.id!;
+        console.log('Existing user found by email, linking new provider. user_id:', userId);
+      } else {
+        // 3. 완전히 새로운 사용자 생성
+        const { data: newUser, error: createUserError } = await supabase
+          .from('users')
+          .insert({
+            email: userData.email,
+            name: userData.name,
+            analysis_count: 10,
+            plan: 'free',
+            last_login_at: new Date().toISOString(),
+          })
+          .select()
+          .single();
+
+        if (createUserError) {
+          console.error('Failed to create user:', createUserError);
+          throw createUserError;
+        }
+
+        userId = newUser.id!;
+        isNewUser = true;
+        console.log('New user created, user_id:', userId);
+      }
+
+      // 4. provider 연동 추가
+      const { error: providerError } = await supabase
+        .from('user_providers')
+        .insert({
+          user_id: userId,
           provider: userData.provider,
           provider_account_id: userData.provider_account_id,
-          name: userData.name,
-          // 신규 사용자에게만 기본값 설정, 기존 사용자는 유지
-          ...(existingUser ? {} : { 
-            analysis_count: 10, 
-            plan: 'free' 
-          }),
-          last_login_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-        {
-          onConflict: 'provider,provider_account_id',
-        }
-      )
+        });
+
+      if (providerError) {
+        console.error('Failed to link provider:', providerError);
+        throw providerError;
+      }
+
+      console.log('Provider linked successfully:', {
+        user_id: userId,
+        provider: userData.provider,
+      });
+    }
+
+    // 5. 사용자의 last_login_at 업데이트
+    const { data: updatedUser, error: updateError } = await supabase
+      .from('users')
+      .update({
+        last_login_at: new Date().toISOString(),
+        // 이름이 없던 사용자에게 이름 추가
+        ...(userData.name ? { name: userData.name } : {}),
+      })
+      .eq('id', userId)
       .select()
       .single();
 
-    if (error) {
-      console.error('Supabase upsert error:', error);
-      throw error;
+    if (updateError) {
+      console.error('Failed to update user:', updateError);
+      throw updateError;
     }
 
-    console.log('User upserted successfully:', data);
-    return data;
+    console.log('User login updated successfully:', {
+      user_id: userId,
+      email: updatedUser.email,
+      isNewUser,
+    });
+
+    return updatedUser;
   } catch (error) {
     console.error('Failed to upsert user:', error);
     throw error;
@@ -100,8 +169,20 @@ export async function getUserByProviderAccount(provider: string, providerAccount
     const supabase = getServerSupabase();
     
     const { data, error } = await supabase
-      .from('users')
-      .select('*')
+      .from('user_providers')
+      .select(`
+        user_id,
+        users (
+          id,
+          email,
+          name,
+          analysis_count,
+          plan,
+          created_at,
+          updated_at,
+          last_login_at
+        )
+      `)
       .eq('provider', provider)
       .eq('provider_account_id', providerAccountId)
       .single();
@@ -113,9 +194,68 @@ export async function getUserByProviderAccount(provider: string, providerAccount
       throw error;
     }
 
-    return data;
+    return (data?.users as any) as User | null;
   } catch (error) {
     console.error('Failed to get user by provider account:', error);
+    throw error;
+  }
+}
+
+/**
+ * 사용자 ID로 연동된 모든 provider 조회
+ */
+export async function getUserProviders(userId: string): Promise<UserProvider[]> {
+  try {
+    const supabase = getServerSupabase();
+    
+    const { data, error } = await supabase
+      .from('user_providers')
+      .select('*')
+      .eq('user_id', userId);
+
+    if (error) {
+      throw error;
+    }
+
+    return data || [];
+  } catch (error) {
+    console.error('Failed to get user providers:', error);
+    throw error;
+  }
+}
+
+/**
+ * 사용자 ID로 특정 provider 연동 해제
+ */
+export async function unlinkProvider(userId: string, provider: string): Promise<boolean> {
+  try {
+    const supabase = getServerSupabase();
+    
+    // 남은 provider 개수 확인 (최소 1개는 유지해야 함)
+    const { data: providers } = await supabase
+      .from('user_providers')
+      .select('id')
+      .eq('user_id', userId);
+
+    if (!providers || providers.length <= 1) {
+      throw new Error('최소 1개의 로그인 방법은 유지해야 합니다.');
+    }
+
+    // provider 연동 해제
+    const { error } = await supabase
+      .from('user_providers')
+      .delete()
+      .eq('user_id', userId)
+      .eq('provider', provider);
+
+    if (error) {
+      throw error;
+    }
+
+    console.log('Provider unlinked successfully:', { userId, provider });
+    return true;
+  } catch (error) {
+    console.error('Failed to unlink provider:', error);
     throw error;
   }
 }

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { User, CreditCard, BarChart3, FileText, Calendar, Building2 } from 'lucide-react';
+import LinkedProviders from '@/components/LinkedProviders';
 
 interface UserProfile {
   email: string;
@@ -45,10 +46,15 @@ export default function ProfilePage() {
     if (status === 'unauthenticated') {
       router.push('/');
     }
-  }, [status, router]);
+    
+    // 카카오 임시 이메일인 경우 이메일 입력 페이지로 이동
+    if (status === 'authenticated' && session?.user?.email?.includes('@kakao.user')) {
+      router.push('/email-input');
+    }
+  }, [status, session, router]);
 
   useEffect(() => {
-    if (session?.user?.email) {
+    if (session?.user?.email && !session.user.email.includes('@kakao.user')) {
       fetchUserInfo();
       fetchAnalysisHistory();
     }
@@ -57,13 +63,21 @@ export default function ProfilePage() {
   const fetchUserInfo = async () => {
     try {
       setLoading(true);
+      setError(null);
+      
+      console.log('Fetching user profile...');
       const res = await fetch('/api/user/profile');
       
+      console.log('Profile response status:', res.status);
+      
       if (!res.ok) {
-        throw new Error('Failed to fetch user profile');
+        const errorData = await res.json();
+        console.error('Profile fetch failed:', errorData);
+        throw new Error(errorData.error || 'Failed to fetch user profile');
       }
       
       const data = await res.json();
+      console.log('Profile data received:', data);
       setUserInfo(data.user);
     } catch (error: any) {
       console.error('Failed to fetch user info:', error);
@@ -127,9 +141,33 @@ export default function ProfilePage() {
   if (error) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
-        <Card className="max-w-md w-full">
-          <CardContent className="pt-6">
-            <p className="text-red-600 text-center">{error}</p>
+        <Card className="max-w-md w-full border-red-200">
+          <CardHeader>
+            <CardTitle className="text-red-600">오류 발생</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-red-600">{error}</p>
+            <div className="space-y-2 text-sm text-gray-600">
+              <p>가능한 원인:</p>
+              <ul className="list-disc list-inside space-y-1">
+                <li>사용자 정보가 데이터베이스에 저장되지 않았습니다.</li>
+                <li>로그인 과정에서 오류가 발생했습니다.</li>
+              </ul>
+              <p className="mt-4">해결 방법:</p>
+              <ul className="list-disc list-inside space-y-1">
+                <li>로그아웃 후 다시 로그인해주세요.</li>
+                <li>문제가 계속되면 관리자에게 문의하세요.</li>
+              </ul>
+            </div>
+            <Button 
+              onClick={() => {
+                setError(null);
+                fetchUserInfo();
+              }}
+              className="w-full"
+            >
+              다시 시도
+            </Button>
           </CardContent>
         </Card>
       </div>
@@ -231,6 +269,11 @@ export default function ProfilePage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* 연동된 로그인 방법 섹션 */}
+        <div className="mt-6">
+          <LinkedProviders />
+        </div>
 
         {/* 분석 이력 섹션 */}
         <Card className="mt-6">
