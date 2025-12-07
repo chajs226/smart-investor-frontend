@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
+import { useSession } from 'next-auth/react';
 import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -9,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { TrendingUp, Building2, Calendar, Settings, Play, Download } from 'lucide-react';
+import { TrendingUp, Building2, Calendar, Play, Download } from 'lucide-react';
 import StockSearch from '@/components/StockSearch';
 
 interface AnalysisResponse {
@@ -65,12 +66,11 @@ const convertMarkdownTableToHTML = (markdown: string): string => {
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
 
 export default function AnalyzePage() {
+  const { data: session, status } = useSession();
   const [formData, setFormData] = useState({
     stockCode: '',
     stockName: '',
     comparePeriods: ['', ''],
-    apiKey: '',
-    model: 'sonar-deep-research', // 기본값, 사용자가 수정 가능
     market: '한국'
   });
   const [isLoading, setIsLoading] = useState(false);
@@ -116,20 +116,142 @@ export default function AnalyzePage() {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 300000); // 300초 타임아웃 (5분)
     try {
-      const query = formData.model ? `?model=${encodeURIComponent(formData.model)}` : '';
-      // Next.js rewrites 프록시를 우회하고 직접 백엔드로 요청
+      // 시장 값을 DB 형식으로 변환
+      const marketValue = formData.market === '한국' ? 'KOSPI' : 'NASDAQ';
+      
+      // 1단계: 캐시 확인 (7일 이내 동일 조건 분석이 있는지)
+      const cacheCheckRes = await fetch('/api/analyses/check-cache', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          market: marketValue,
+          symbol: formData.stockCode,
+          name: formData.stockName,
+          compare_periods: formData.comparePeriods.filter(p => p.trim() !== ''),
+        }),
+      });
+
+      if (cacheCheckRes.ok) {
+        const cacheData = await cacheCheckRes.json();
+        
+        if (cacheData.cached && cacheData.data) {
+          // 캐시된 분석 결과 사용
+          console.log('✅ Using cached analysis');
+          const cachedAnalysis = cacheData.data;
+          
+          setAnalysis({
+            stock_code: cachedAnalysis.symbol,
+            stock_name: cachedAnalysis.name,
+            compare_periods: cachedAnalysis.compare_periods || [],
+            analysis: cachedAnalysis.report,
+            financial_table: cachedAnalysis.financial_table || '',
+            citations: cachedAnalysis.citations || [],
+            model: cachedAnalysis.model || '',
+            usage: null,
+            created: 0,
+          });
+
+          // 캐시 히트 시에도 분석 횟수 차감
+          if (status === 'authenticated' && session?.user?.email) {
+            try {
+              const decrementRes = await fetch('/api/user/decrement-analysis', {
+                method: 'POST',
+              });
+              
+              if (decrementRes.ok) {
+                const decrementData = await decrementRes.json();
+                console.log('Analysis count decremented (cache hit):', decrementData);
+                setToast(`✅ 분석 완료! 남은 횟수: ${decrementData.analysis_count}회`);
+              } else {
+                const errorData = await decrementRes.json();
+                setError(errorData.error || '분석 횟수 차감에 실패했습니다.');
+                setAnalysis(null);
+                setIsLoading(false);
+                clearTimeout(timeoutId);
+                return;
+              }
+            } catch (decrementError) {
+              console.error('Failed to decrement analysis count:', decrementError);
+              setError('분석 횟수 차감에 실패했습니다.');
+              setAnalysis(null);
+              setIsLoading(false);
+              clearTimeout(timeoutId);
+              return;
+            }
+          }
+
+          setIsLoading(false);
+          clearTimeout(timeoutId);
+          return;
+        }
+      }
+
+      // 2단계: 캐시에 없으면 백엔드 LLM 분석 요청
+      // API 키와 모델은 서버 환경변수에서 관리됨
       const response = await axios.post(
-        `${API_BASE_URL}/api/analysis/analyze${query}`,
+        `${API_BASE_URL}/api/analysis/analyze`,
         {
           stock_code: formData.stockCode,
           stock_name: formData.stockName,
           compare_periods: formData.comparePeriods.filter(p => p.trim() !== ''),
           market: formData.market,
-          api_key: formData.apiKey
         },
         { signal: controller.signal }
       );
-      setAnalysis(response.data);
+      
+      const analysisData = response.data;
+      setAnalysis(analysisData);
+
+      // 3단계: 프론트엔드 Supabase에 분석 결과 저장 및 이력 기록
+      try {
+        const saveRes = await fetch('/api/analyses', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            market: marketValue,
+            symbol: analysisData.stock_code,
+            name: analysisData.stock_name,
+            sector: null,
+            report: analysisData.analysis,
+            financial_table: analysisData.financial_table,
+            compare_periods: analysisData.compare_periods,
+            model: analysisData.model,
+            citations: analysisData.citations,
+          }),
+        });
+
+        if (saveRes.ok) {
+          const saveData = await saveRes.json();
+          console.log('✅ Analysis saved:', saveData.data?.id);
+          console.log('✅ From cache:', saveData.fromCache);
+        }
+      } catch (saveError) {
+        console.error('Failed to save analysis:', saveError);
+        // 저장 실패해도 분석 결과는 보여줌
+      }
+      
+      // 4단계: 로그인한 사용자인 경우 분석 횟수 차감
+      if (status === 'authenticated' && session?.user?.email) {
+        try {
+          const decrementRes = await fetch('/api/user/decrement-analysis', {
+            method: 'POST',
+          });
+          
+          if (decrementRes.ok) {
+            const decrementData = await decrementRes.json();
+            console.log('Analysis count decremented:', decrementData);
+            setToast(`✅ 분석 완료! 남은 횟수: ${decrementData.analysis_count}회`);
+          }
+        } catch (decrementError) {
+          console.error('Failed to decrement analysis count:', decrementError);
+          // 횟수 차감 실패해도 분석 결과는 보여줌
+        }
+      }
+      
     } catch (err: any) {
       if (axios.isCancel(err)) {
         setError('요청이 시간 초과되었습니다. (300초/5분) 모델/기간을 조정하거나 다시 시도하세요.');
@@ -163,6 +285,18 @@ export default function AnalyzePage() {
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
+      {/* 로딩 오버레이 */}
+      {isLoading && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white p-8 rounded-lg shadow-xl text-center max-w-md">
+            <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mx-auto mb-4"></div>
+            <h3 className="text-xl font-semibold mb-2">분석 중입니다</h3>
+            <p className="text-gray-600">최대 3분 소요될 수 있습니다.</p>
+            <p className="text-sm text-gray-500 mt-2">잠시만 기다려주세요...</p>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-4xl mx-auto px-4">
         <Card className="w-full max-w-4xl mx-auto">
           <CardHeader>
@@ -277,41 +411,6 @@ export default function AnalyzePage() {
                       <option value="2025.03">2025.03</option>
                       <option value="2025.06">2025.06</option>
                     </select>
-                  </div>
-                </div>
-              </div>
-
-              {/* API 설정 섹션 */}
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Settings className="h-4 w-4" />
-                  <Label>API 설정</Label>
-                </div>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="apiKey">Perplexity API 키</Label>
-                    <Input
-                      id="apiKey"
-                      name="apiKey"
-                      type="password"
-                      value={formData.apiKey}
-                      onChange={handleInputChange}
-                      placeholder="Perplexity API 키를 입력하세요"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="model">모델 (선택)</Label>
-                    <Input
-                      id="model"
-                      name="model"
-                      value={formData.model}
-                      onChange={handleInputChange}
-                      placeholder="예: llama-3.1-sonar-small-128k-online"
-                    />
-                    <p className="text-sm text-muted-foreground">
-                      빈칸이면 서버 기본 모델을 사용합니다.
-                    </p>
                   </div>
                 </div>
               </div>

@@ -9,6 +9,11 @@ export default function MainPage() {
   const router = useRouter();
 
   const handleLogin = async (provider: "kakao" | "naver") => {
+    // 카카오는 사업자 등록 필요로 임시 비활성화
+    if (provider === "kakao") {
+      alert("카카오 로그인은 향후 지원 예정입니다.\n현재는 네이버 로그인을 이용해주세요.");
+      return;
+    }
     await signIn(provider, { callbackUrl: "/analyze" });
   };
 
@@ -20,7 +25,13 @@ export default function MainPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <Button className="w-full" variant="outline" onClick={() => handleLogin("naver")}>네이버로 로그인</Button>
-          <Button className="w-full" variant="outline" onClick={() => handleLogin("kakao")}>카카오로 로그인</Button>
+          <Button 
+            className="w-full opacity-50" 
+            variant="outline" 
+            onClick={() => handleLogin("kakao")}
+          >
+            카카오로 로그인 (준비중)
+          </Button>
           <Button className="w-full" onClick={() => router.push("/analyze")}>로그인 없이 이동</Button>
         </CardContent>
       </Card>
