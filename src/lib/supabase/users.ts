@@ -350,3 +350,49 @@ export async function getAnalysisCount(email: string): Promise<number> {
     throw error;
   }
 }
+
+/**
+ * 회원 탈퇴 - 사용자 완전 삭제
+ * user_providers와 analyses_history는 ON DELETE CASCADE로 자동 삭제됨
+ */
+export async function deleteUser(userId: string): Promise<boolean> {
+  try {
+    const supabase = getServerSupabase();
+    
+    // 사용자 존재 여부 확인
+    const { data: existingUser, error: fetchError } = await supabase
+      .from('users')
+      .select('id, email')
+      .eq('id', userId)
+      .single();
+
+    if (fetchError) {
+      if (fetchError.code === 'PGRST116') {
+        throw new Error('사용자를 찾을 수 없습니다.');
+      }
+      throw fetchError;
+    }
+
+    console.log('Deleting user:', {
+      userId: existingUser.id,
+      email: existingUser.email,
+    });
+
+    // 사용자 삭제 (CASCADE로 연관 데이터 자동 삭제)
+    const { error: deleteError } = await supabase
+      .from('users')
+      .delete()
+      .eq('id', userId);
+
+    if (deleteError) {
+      console.error('Failed to delete user:', deleteError);
+      throw deleteError;
+    }
+
+    console.log('User deleted successfully:', userId);
+    return true;
+  } catch (error) {
+    console.error('Failed to delete user:', error);
+    throw error;
+  }
+}

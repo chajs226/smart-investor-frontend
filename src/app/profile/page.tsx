@@ -5,8 +5,20 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { User, CreditCard, BarChart3, FileText, Calendar, Building2 } from 'lucide-react';
+import { User, CreditCard, BarChart3, FileText, Calendar, Building2, AlertTriangle, Trash2 } from 'lucide-react';
 import LinkedProviders from '@/components/LinkedProviders';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import { signOut } from 'next-auth/react';
 
 interface UserProfile {
   email: string;
@@ -41,6 +53,8 @@ export default function ProfilePage() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedReport, setSelectedReport] = useState<AnalysisHistoryItem | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -121,6 +135,33 @@ export default function ProfilePage() {
       hour: '2-digit',
       minute: '2-digit',
     });
+  };
+
+  const handleDeleteAccount = async () => {
+    if (isDeleting) return;
+
+    try {
+      setIsDeleting(true);
+
+      const res = await fetch('/api/user/account', {
+        method: 'DELETE',
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || '회원 탈퇴 처리에 실패했습니다.');
+      }
+
+      // 성공: 로그아웃 후 메인 페이지로 이동
+      alert('회원 탈퇴가 완료되었습니다.');
+      await signOut({ redirect: true, callbackUrl: '/' });
+    } catch (error: any) {
+      console.error('Failed to delete account:', error);
+      alert(error.message || '회원 탈퇴 처리 중 오류가 발생했습니다.');
+      setShowDeleteConfirm(false);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   if (status === 'loading' || loading) {
@@ -359,6 +400,99 @@ export default function ProfilePage() {
                 </table>
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        {/* 회원 탈퇴 섹션 */}
+        <Card className="mt-6 border-red-200">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-xl text-red-600">
+              <AlertTriangle className="h-5 w-5" />
+              회원 탈퇴
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <p className="text-sm text-red-800 font-medium mb-2">
+                ⚠️ 회원 탈퇴 시 다음 정보가 모두 삭제됩니다:
+              </p>
+              <ul className="text-sm text-red-700 space-y-1 list-disc list-inside">
+                <li>계정 정보 (이메일, 이름)</li>
+                <li>남은 분석 가능 횟수: <strong>{userInfo?.analysis_count ?? 0}회</strong></li>
+                <li>분석 이력: <strong>{analysisHistory.length}개</strong></li>
+                <li>연동된 소셜 계정 정보</li>
+              </ul>
+              <p className="text-sm text-red-800 font-semibold mt-3">
+                탈퇴 후에는 복구할 수 없습니다.
+              </p>
+            </div>
+
+            <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="destructive"
+                  className="w-full"
+                  size="lg"
+                >
+                  <Trash2 className="h-5 w-5 mr-2" />
+                  회원 탈퇴
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="text-red-600">
+                    정말로 탈퇴하시겠습니까?
+                  </AlertDialogTitle>
+                  <AlertDialogDescription asChild>
+                    <div className="space-y-3">
+                      <div className="text-base font-medium text-gray-700">
+                        회원 탈퇴 시, 기존의 조회 기록은 삭제 됩니다.
+                      </div>
+                      <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-1">
+                        <div className="text-sm text-amber-800">
+                          • 모든 개인정보가 즉시 삭제됩니다
+                        </div>
+                        <div className="text-sm text-amber-800">
+                          • 남은 분석 횟수 {userInfo?.analysis_count ?? 0}회가 소멸됩니다
+                        </div>
+                        <div className="text-sm text-amber-800">
+                          • {analysisHistory.length}개의 분석 이력이 삭제됩니다
+                        </div>
+                        <div className="text-sm text-amber-800 font-semibold mt-2">
+                          • 탈퇴 후에는 복구할 수 없습니다
+                        </div>
+                      </div>
+                      <div className="text-sm text-gray-600">
+                        계속 진행하시려면 아래 &quot;탈퇴 확정&quot; 버튼을 눌러주세요.
+                      </div>
+                    </div>
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={isDeleting}>
+                    취소
+                  </AlertDialogCancel>
+                  <Button
+                    onClick={handleDeleteAccount}
+                    disabled={isDeleting}
+                    variant="destructive"
+                    className="bg-red-600 hover:bg-red-700 focus-visible:ring-red-600/20"
+                  >
+                    {isDeleting ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        처리중...
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        탈퇴 확정
+                      </>
+                    )}
+                  </Button>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </CardContent>
         </Card>
 
