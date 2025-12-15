@@ -388,11 +388,11 @@ export default function AnalyzePage() {
                       required
                     >
                       <option value="">분기 선택</option>
-                      <option value="2024.06">2024.06</option>
                       <option value="2024.09">2024.09</option>
                       <option value="2024.12">2024.12</option>
                       <option value="2025.03">2025.03</option>
                       <option value="2025.06">2025.06</option>
+                      <option value="2025.09">2025.09</option>
                     </select>
                   </div>
                   <div className="space-y-2">
@@ -405,11 +405,11 @@ export default function AnalyzePage() {
                       required
                     >
                       <option value="">분기 선택</option>
-                      <option value="2024.06">2024.06</option>
                       <option value="2024.09">2024.09</option>
                       <option value="2024.12">2024.12</option>
                       <option value="2025.03">2025.03</option>
                       <option value="2025.06">2025.06</option>
+                      <option value="2025.09">2025.09</option>
                     </select>
                   </div>
                 </div>
